@@ -1,7 +1,7 @@
 // Author  Raido Pahtma
 // License MIT
 
-// Reportlogger executable.
+// reportlogger executable.
 package main
 
 import "fmt"
@@ -15,7 +15,7 @@ import "github.com/proactivity-lab/go-sfconnection"
 import "github.com/thinnect/go-reportreceiver"
 
 const ApplicationVersionMajor = 0
-const ApplicationVersionMinor = 1
+const ApplicationVersionMinor = 2
 const ApplicationVersionPatch = 0
 
 var ApplicationBuildDate string
@@ -28,14 +28,13 @@ type Options struct {
 
 	Output string `short:"o" long:"output" default:"reports.txt" description:"Reports output file"`
 
-	Source sfconnection.AMAddr  `short:"s" long:"source" default:"0001" description:"Source of the packet (hex)"`
-	Group  sfconnection.AMGroup `short:"g" long:"group" default:"22" description:"Packet AM Group (hex)"`
+	Address sfconnection.AMAddr  `short:"a" long:"address" default:"0001" description:"Local address (hex)"`
+	Group   sfconnection.AMGroup `short:"g" long:"group"   default:"22"   description:"Packet AM Group (hex)"`
 
 	Debug       []bool `short:"D" long:"debug"   description:"Debug mode, print raw packets"`
 	ShowVersion func() `short:"V" long:"version" description:"Show application version"`
 }
 
-// Main function.
 func mainfunction() int {
 
 	var opts Options
@@ -52,8 +51,14 @@ func mainfunction() int {
 
 	_, err := flags.Parse(&opts)
 	if err != nil {
-		fmt.Printf("Argument parser error: %s\n", err)
-		return 1
+		flagserr := err.(*flags.Error)
+		if flagserr.Type != flags.ErrHelp {
+			if len(opts.Debug) > 0 {
+				fmt.Printf("Argument parser error: %s\n", err)
+			}
+			return 1
+		}
+		return 0
 	}
 
 	host, port, err := sfconnection.ParseSfConnectionString(opts.Positional.ConnectionString)
@@ -66,7 +71,7 @@ func mainfunction() int {
 	signal.Notify(signals, os.Interrupt, os.Kill)
 
 	sfc := sfconnection.NewSfConnection()
-	rl := reportreceiver.NewReportReceiver(sfc, opts.Source, opts.Group)
+	rl := reportreceiver.NewReportReceiver(sfc, opts.Address, opts.Group)
 	rfw, _ := reportreceiver.NewReportFileWriter(opts.Output)
 	rl.SetOutput(rfw)
 
@@ -87,10 +92,11 @@ func mainfunction() int {
 			logger.Debug.Printf("signal %s\n", sig)
 			sfc.Disconnect()
 			interrupted = true
-			time.Sleep(time.Second)
+			// also stop rl?
 		}
 	}
 
+	time.Sleep(100 * time.Millisecond)
 	return 0
 }
 
