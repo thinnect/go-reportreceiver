@@ -16,7 +16,7 @@ import "github.com/thinnect/go-reportreceiver"
 
 const ApplicationVersionMajor = 0
 const ApplicationVersionMinor = 2
-const ApplicationVersionPatch = 0
+const ApplicationVersionPatch = 1
 
 var ApplicationBuildDate string
 var ApplicationBuildDistro string

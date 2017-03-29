@@ -162,7 +162,7 @@ type ReportReceiver struct {
 
 	sfc     *sfconnection.SfConnection
 	dsp     *sfconnection.MessageDispatcher
-	receive chan *sfconnection.Message
+	receive chan sfconnection.Packet
 	reports map[sfconnection.AMAddr]*PartialReport
 
 	reportwriter ReportWriter
@@ -172,7 +172,7 @@ func NewReportReceiver(sfc *sfconnection.SfConnection, source sfconnection.AMAdd
 	rl := new(ReportReceiver)
 	rl.InitLoggers()
 
-	rl.receive = make(chan *sfconnection.Message)
+	rl.receive = make(chan sfconnection.Packet)
 	rl.reports = make(map[sfconnection.AMAddr]*PartialReport)
 
 	rl.dsp = sfconnection.NewMessageDispatcher(sfconnection.NewMessage(group, source))
@@ -206,7 +206,8 @@ func (self *ReportReceiver) Run() {
 	self.Debug.Printf("run\n")
 	for {
 		select {
-		case msg := <-self.receive:
+		case packet := <-self.receive:
+			msg := packet.(*sfconnection.Message)
 			self.Debug.Printf("%s\n", msg)
 			if len(msg.Payload) > 0 {
 				if msg.Payload[0] == HEADER_REPORTMESSAGE {

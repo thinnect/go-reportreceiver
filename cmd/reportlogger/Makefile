@@ -7,7 +7,7 @@ all: build
 
 raspberry: export GOOS=linux
 raspberry: export GOARCH=arm
-raspberry: export GOARM=6
+raspberry: export GOARM=5
 raspberry: build
 
 raspberry2: export GOOS=linux
