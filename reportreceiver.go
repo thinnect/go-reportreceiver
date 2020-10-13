@@ -9,7 +9,7 @@ import "time"
 import "errors"
 
 import "github.com/proactivity-lab/go-loggers"
-import "github.com/proactivity-lab/go-sfconnection"
+import "github.com/proactivity-lab/go-moteconnection"
 
 const AMID_REPORTS = 9
 const AM_DEFAULT_GROUP = 0x22
@@ -44,7 +44,7 @@ type ReportData struct {
 }
 
 type Report struct {
-	Source         sfconnection.AMAddr
+	Source         moteconnection.AMAddr
 	Report         uint32
 	Channel        uint8
 	Id             uint32
@@ -71,7 +71,7 @@ func (self *Report) String() string {
 }
 
 type PartialReport struct {
-	Source sfconnection.AMAddr
+	Source moteconnection.AMAddr
 	Report uint32
 
 	Total uint8
@@ -118,7 +118,7 @@ func (self *PartialReport) GetReport() (*Report, error) {
 		}
 
 		rpd := new(ReportData)
-		if err := sfconnection.DeserializePacket(rpd, data); err != nil {
+		if err := moteconnection.DeserializePacket(rpd, data); err != nil {
 			return nil, err
 		}
 
@@ -148,7 +148,7 @@ func (self *PartialReport) Missing() []uint8 {
 	return missing
 }
 
-func NewPartialReport(source sfconnection.AMAddr, rm *ReportMsg) *PartialReport {
+func NewPartialReport(source moteconnection.AMAddr, rm *ReportMsg) *PartialReport {
 	pr := new(PartialReport)
 	pr.Source = source
 	pr.Report = rm.Report
@@ -160,31 +160,31 @@ func NewPartialReport(source sfconnection.AMAddr, rm *ReportMsg) *PartialReport 
 type ReportReceiver struct {
 	loggers.DIWEloggers
 
-	sfc     *sfconnection.SfConnection
-	dsp     *sfconnection.MessageDispatcher
-	receive chan sfconnection.Packet
-	reports map[sfconnection.AMAddr]*PartialReport
+	mconn   moteconnection.MoteConnection
+	dsp     *moteconnection.MessageDispatcher
+	receive chan moteconnection.Packet
+	reports map[moteconnection.AMAddr]*PartialReport
 
 	reportwriter ReportWriter
 }
 
-func NewReportReceiver(sfc *sfconnection.SfConnection, source sfconnection.AMAddr, group sfconnection.AMGroup) *ReportReceiver {
+func NewReportReceiver(mconn moteconnection.MoteConnection, source moteconnection.AMAddr, group moteconnection.AMGroup) *ReportReceiver {
 	rl := new(ReportReceiver)
 	rl.InitLoggers()
 
-	rl.receive = make(chan sfconnection.Packet)
-	rl.reports = make(map[sfconnection.AMAddr]*PartialReport)
+	rl.receive = make(chan moteconnection.Packet)
+	rl.reports = make(map[moteconnection.AMAddr]*PartialReport)
 
-	rl.dsp = sfconnection.NewMessageDispatcher(sfconnection.NewMessage(group, source))
+	rl.dsp = moteconnection.NewMessageDispatcher(moteconnection.NewMessage(group, source))
 	rl.dsp.RegisterMessageReceiver(AMID_REPORTS, rl.receive)
 
-	rl.sfc = sfc
-	rl.sfc.AddDispatcher(rl.dsp)
+	rl.mconn = mconn
+	rl.mconn.AddDispatcher(rl.dsp)
 
 	return rl
 }
 
-func (self *ReportReceiver) SendAck(destination sfconnection.AMAddr, report uint32, missing []uint8) {
+func (self *ReportReceiver) SendAck(destination moteconnection.AMAddr, report uint32, missing []uint8) {
 	ack := new(ReportMsgAck)
 	ack.Header = 2
 	ack.Report = report
@@ -193,9 +193,9 @@ func (self *ReportReceiver) SendAck(destination sfconnection.AMAddr, report uint
 	msg := self.dsp.NewMessage()
 	msg.SetDestination(destination)
 	msg.SetType(AMID_REPORTS)
-	msg.Payload = sfconnection.SerializePacket(ack)
+	msg.Payload = moteconnection.SerializePacket(ack)
 
-	self.sfc.Send(msg)
+	self.mconn.Send(msg)
 }
 
 func (self *ReportReceiver) SetOutput(rw ReportWriter) {
@@ -207,12 +207,12 @@ func (self *ReportReceiver) Run() {
 	for {
 		select {
 		case packet := <-self.receive:
-			msg := packet.(*sfconnection.Message)
+			msg := packet.(*moteconnection.Message)
 			self.Debug.Printf("%s\n", msg)
 			if len(msg.Payload) > 0 {
 				if msg.Payload[0] == HEADER_REPORTMESSAGE {
 					rpm := new(ReportMsg)
-					if err := sfconnection.DeserializePacket(rpm, msg.Payload); err != nil {
+					if err := moteconnection.DeserializePacket(rpm, msg.Payload); err != nil {
 						self.Error.Printf("%s %s\n", msg, err)
 						break
 					}
