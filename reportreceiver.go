@@ -1,15 +1,17 @@
 // Author  Raido Pahtma
 // License MIT
 
-// ReportReceiver package.
+// Package reportreceiver ReportReceiver
 package reportreceiver
 
-import "fmt"
-import "time"
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"time"
 
-import "github.com/proactivity-lab/go-loggers"
-import "github.com/proactivity-lab/go-moteconnection"
+	"github.com/proactivity-lab/go-loggers"
+	"github.com/proactivity-lab/go-moteconnection"
+)
 
 const AMID_REPORTS = 9
 const AM_DEFAULT_GROUP = 0x22
@@ -56,6 +58,14 @@ type Report struct {
 	LastRcvd  time.Time
 	FragsRcvd int
 }
+
+type QueueElement struct {
+	Source moteconnection.AMAddr
+}
+
+var (
+	InputQueue = make(map[moteconnection.AMAddr]moteconnection.Message)
+)
 
 func (self *Report) StorageStringHeader() string {
 	return "timestamp ff, timestamp lf, ADDR, reportnum, CHANNEL, reportid, clocktime, localtime, data"
@@ -160,11 +170,10 @@ func NewPartialReport(source moteconnection.AMAddr, rm *ReportMsg) *PartialRepor
 type ReportReceiver struct {
 	loggers.DIWEloggers
 
-	mconn   moteconnection.MoteConnection
-	dsp     *moteconnection.MessageDispatcher
-	receive chan moteconnection.Packet
-	reports map[moteconnection.AMAddr]*PartialReport
-
+	mconn        moteconnection.MoteConnection
+	dsp          *moteconnection.MessageDispatcher
+	receive      chan moteconnection.Packet
+	reports      map[moteconnection.AMAddr]*PartialReport
 	reportwriter ReportWriter
 }
 
@@ -204,7 +213,9 @@ func (self *ReportReceiver) SetOutput(rw ReportWriter) {
 
 func (self *ReportReceiver) Run() {
 	self.Debug.Printf("run\n")
+
 	for {
+		//self.Debug.Printf("Main Loop begin\n")
 		select {
 		case packet := <-self.receive:
 			msg := packet.(*moteconnection.Message)
@@ -212,13 +223,20 @@ func (self *ReportReceiver) Run() {
 			if len(msg.Payload) > 0 {
 				if msg.Payload[0] == HEADER_REPORTMESSAGE {
 					rpm := new(ReportMsg)
+
 					if err := moteconnection.DeserializePacket(rpm, msg.Payload); err != nil {
 						self.Error.Printf("%s %s\n", msg, err)
 						break
 					}
 
+					if _, ok := InputQueue[msg.Source()]; ok {
+						self.Debug.Printf("Deleting from queue reset from: %s", msg.Source())
+						delete(InputQueue, msg.Source())
+					}
+
 					if rpm.Report == 0 {
 						self.Info.Printf("RESET %s\n", msg.Source())
+						InputQueue[msg.Source()] = *msg
 						delete(self.reports, msg.Source())
 					}
 
@@ -266,6 +284,37 @@ func (self *ReportReceiver) Run() {
 						// TODO Delay ack, still missing something
 					}
 				}
+			}
+		}
+		self.Debug.Println("Current Queue length:", len(InputQueue))
+		/*
+			self.Debug.Printf("Members: ")
+			for key, element := range InputQueue {
+				self.Debug.Printf("%s %s", key, element.Source())
+			}
+		*/
+
+	}
+}
+
+func (self *ReportReceiver) RunResender() {
+	self.Debug.Println("Run sender")
+	for {
+		time.Sleep(2 * time.Minute)
+
+		if 0 != len(InputQueue) {
+			self.Debug.Printf("Reportlogger shall send ACK from queue")
+			//takes first element randomly fron list and sends ACK for it
+			for key, element := range InputQueue {
+				self.Debug.Printf(" sending to: %s", key)
+				rpm := new(ReportMsg)
+				if err := moteconnection.DeserializePacket(rpm, element.Payload); err != nil {
+					self.Error.Printf("%s %s\n", element, err)
+					break
+				}
+				self.reports[key] = NewPartialReport(key, rpm)
+				self.SendAck(key, rpm.Report, nil)
+				break
 			}
 		}
 	}
