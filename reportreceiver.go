@@ -212,8 +212,7 @@ func (self *ReportReceiver) SetOutput(rw ReportWriter) {
 }
 
 func (self *ReportReceiver) Run() {
-	self.Debug.Printf("run\n")
-
+	self.Debug.Printf("run main loop\n")
 	for {
 		//self.Debug.Printf("Main Loop begin\n")
 		select {
@@ -228,15 +227,15 @@ func (self *ReportReceiver) Run() {
 						self.Error.Printf("%s %s\n", msg, err)
 						break
 					}
-
-					if _, ok := InputQueue[msg.Source()]; ok {
-						self.Debug.Printf("Deleting from queue reset from: %s", msg.Source())
-						delete(InputQueue, msg.Source())
-					}
-
+					/*
+						if _, ok := InputQueue[msg.Source()]; ok {
+							self.Debug.Printf("Deleting from queue reset from: %s", msg.Source())
+							delete(InputQueue, msg.Source())
+						}
+					*/
 					if rpm.Report == 0 {
 						self.Info.Printf("RESET %s\n", msg.Source())
-						InputQueue[msg.Source()] = *msg
+						//InputQueue[msg.Source()] = *msg
 						delete(self.reports, msg.Source())
 					}
 
@@ -278,44 +277,49 @@ func (self *ReportReceiver) Run() {
 						if err != nil {
 							self.Error.Printf("%s\n", err)
 						}
+						//sends ACK if all fragments have arrived
 						self.SendAck(msg.Source(), rpm.Report, nil)
 					} else {
-						self.SendAck(msg.Source(), rpm.Report, pr.Missing())
+						// self.SendAck(msg.Source(), rpm.Report, pr.Missing())
 						// TODO Delay ack, still missing something
 					}
 				}
 			}
 		}
-		self.Debug.Println("Current Queue length:", len(InputQueue))
-		/*
-			self.Debug.Printf("Members: ")
-			for key, element := range InputQueue {
-				self.Debug.Printf("%s %s", key, element.Source())
-			}
-		*/
-
+		//self.Debug.Println("Current Queue length:", len(InputQueue))
 	}
 }
 
-func (self *ReportReceiver) RunResender() {
-	self.Debug.Println("Run sender")
+// RunResetResender func
+// Resends ACK packets to nodes which are awaiting for routing and have only sent RESET
+func (self *ReportReceiver) RunResetResender() {
+	self.Debug.Println("Run RESET ACK sender")
 	for {
 		time.Sleep(2 * time.Minute)
-
-		if 0 != len(InputQueue) {
-			self.Debug.Printf("Reportlogger shall send ACK from queue")
-			//takes first element randomly fron list and sends ACK for it
-			for key, element := range InputQueue {
-				self.Debug.Printf(" sending to: %s", key)
-				rpm := new(ReportMsg)
-				if err := moteconnection.DeserializePacket(rpm, element.Payload); err != nil {
-					self.Error.Printf("%s %s\n", element, err)
-					break
-				}
-				self.reports[key] = NewPartialReport(key, rpm)
-				self.SendAck(key, rpm.Report, nil)
+		for key, element := range self.reports {
+			if 2 > element.Total {
+				self.Debug.Printf("Reportlogger shall send ACK from reset queue")
+				self.Debug.Printf("Sending to: %s", key)
+				self.SendAck(key, element.Report, nil)
 				break
 			}
 		}
+	}
+}
+
+// RunMissingFragmentResender func
+// Resends ACK packets to nodes which have not sent all fragments at current report
+func (self *ReportReceiver) RunMissingFragmentResender() {
+	self.Debug.Println("Run missing fragment sender")
+	for {
+		time.Sleep(1 * time.Minute)
+		for key, element := range self.reports {
+			if !element.IsComplete() {
+				self.Debug.Printf("missing fragment, sending to: %s", key)
+				self.SendAck(key, element.Report, nil)
+				time.Sleep(5 * time.Second)
+			}
+		}
+
 	}
 }

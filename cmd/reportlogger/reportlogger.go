@@ -87,7 +87,8 @@ func mainfunction() int {
 	conn.Autoconnect(30 * time.Second)
 
 	go rl.Run()
-	go rl.RunResender()
+	go rl.RunResetResender()
+	go rl.RunMissingFragmentResender()
 	for interrupted := false; interrupted == false; {
 		select {
 		case sig := <-signals:
