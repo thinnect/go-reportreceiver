@@ -63,9 +63,6 @@ type QueueElement struct {
 	Source moteconnection.AMAddr
 }
 
-var (
-	InputQueue = make(map[moteconnection.AMAddr]moteconnection.Message)
-)
 
 func (self *Report) StorageStringHeader() string {
 	return "timestamp ff, timestamp lf, ADDR, reportnum, CHANNEL, reportid, clocktime, localtime, data"
@@ -214,7 +211,6 @@ func (self *ReportReceiver) SetOutput(rw ReportWriter) {
 func (self *ReportReceiver) Run() {
 	self.Debug.Printf("run main loop\n")
 	for {
-		//self.Debug.Printf("Main Loop begin\n")
 		select {
 		case packet := <-self.receive:
 			msg := packet.(*moteconnection.Message)
@@ -227,15 +223,8 @@ func (self *ReportReceiver) Run() {
 						self.Error.Printf("%s %s\n", msg, err)
 						break
 					}
-					/*
-						if _, ok := InputQueue[msg.Source()]; ok {
-							self.Debug.Printf("Deleting from queue reset from: %s", msg.Source())
-							delete(InputQueue, msg.Source())
-						}
-					*/
 					if rpm.Report == 0 {
 						self.Info.Printf("RESET %s\n", msg.Source())
-						//InputQueue[msg.Source()] = *msg
 						delete(self.reports, msg.Source())
 					}
 
@@ -270,23 +259,24 @@ func (self *ReportReceiver) Run() {
 
 					pr.AddFragment(rpm)
 					self.Debug.Printf("%s\n", pr)
-
-					if report, err := pr.GetReport(); err == nil {
-						self.Info.Printf("%s\n", report)
-						err := self.reportwriter.Append(report)
-						if err != nil {
+					if pr.IsComplete() {
+						if report, err := pr.GetReport(); err == nil {
+							self.Info.Printf("%s\n", report)
+							err := self.reportwriter.Append(report)
+							if err != nil {
+								self.Error.Printf("%s\n", err)
+							}
+							//sends ACK if all fragments have arrived
+							self.SendAck(msg.Source(), rpm.Report, nil)
+						} else {
 							self.Error.Printf("%s\n", err)
 						}
-						//sends ACK if all fragments have arrived
-						self.SendAck(msg.Source(), rpm.Report, nil)
 					} else {
-						// self.SendAck(msg.Source(), rpm.Report, pr.Missing())
-						// TODO Delay ack, still missing something
+						self.Debug.Printf("Missing fragments!")
 					}
 				}
 			}
 		}
-		//self.Debug.Println("Current Queue length:", len(InputQueue))
 	}
 }
 
