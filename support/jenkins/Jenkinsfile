@@ -60,10 +60,13 @@ pipeline
 
 def buildStuff()
 {
+	sh 'mkdir -p src/github.com/thinnect/go-reportreceiver'
+	sh 'mv * src/github.com/thinnect/go-reportreceiver'
+
 	// stage('Echo GOPATH')
 	sh 'echo GOPATH:$GOPATH'
 	// stage('Build and install')
-	dir('cmd')
+	dir('src/github.com/thinnect/go-reportreceiver/cmd')
 	{
 		sh './build-deb.sh'
 		sh 'dpkg -i mist-reportlogger*.deb'
@@ -72,7 +75,7 @@ def buildStuff()
 	sh 'reportlogger -V'
 
 	// Publish artifacts
-	dir('cmd')
+	dir('src/github.com/thinnect/go-reportreceiver/cmd')
 	{
 		sh \
 			"""#!/usr/bin/env bash
