@@ -1,0 +1,88 @@
+pipeline
+{
+	// Make it parallel with: https://jenkins.io/blog/2017/09/25/declarative-1/
+	agent none
+	stages {
+		stage('Build deviceparameters on amd64')
+		{
+			agent
+			{
+				docker
+				{
+					// Request for an amd64 agent
+					image 'docker.thinnect.net/ci/stretch-build-golang-ruby-ronn-deb-amd64:20190128'
+					registryUrl 'https://docker.thinnect.net'
+					registryCredentialsId 'docker-pip_ci-agent'
+					alwaysPull true
+				}
+			}
+			environment
+			{
+				GOPATH = "$WORKSPACE"
+				BUILD_TYPE = "debug"
+				BUILD_ARCH = "amd64"
+				NEXUS_UPLOAD_CREDS = credentials('nexus_ci-agent-uploader')
+			}
+			steps
+			{
+				buildStuff()
+			}
+		}
+
+		stage('Build deviceparameters on armhf')
+		{
+			agent
+			{
+				docker
+				{
+					// Request for an ARM agent
+					label 'arm'
+					image 'docker.thinnect.net/ci/stretch-build-golang-ruby-ronn-deb-armhf:20190128'
+					registryUrl 'https://docker.thinnect.net'
+					registryCredentialsId 'docker-pip_ci-agent'
+					alwaysPull true
+				}
+			}
+			environment
+			{
+				GOPATH = "$WORKSPACE"
+				BUILD_TYPE = "debug"
+				BUILD_ARCH = "armhf"
+				NEXUS_UPLOAD_CREDS = credentials('nexus_ci-agent-uploader')
+			}
+			steps
+			{
+				buildStuff()
+			}
+		}
+	}
+}
+
+def buildStuff()
+{
+	sh 'mkdir -p src/github.com/thinnect/go-reportreceiver'
+
+	sh 'mv * src/github.com/thinnect/go-reportreceiver | true'
+
+	// stage('Echo GOPATH')
+	sh 'echo GOPATH:$GOPATH'
+	// stage('Build and install')
+	dir('src/github.com/thinnect/go-reportreceiver/cmd')
+	{
+		sh './build-deb.sh'
+		sh 'dpkg -i mist-reportlogger*.deb'
+	}
+	// stage('Run executables')
+	sh 'reportlogger -V'
+
+	// Publish artifacts
+	dir('src/github.com/thinnect/go-reportreceiver/cmd')
+	{
+		sh \
+			"""#!/usr/bin/env bash
+			UPLOAD_FILENAME=(mist-reportlogger*.deb)
+			echo "Publishing \$UPLOAD_FILENAME"
+			exec curl -u ${NEXUS_UPLOAD_CREDS} --silent --fail --show-error --upload-file \$UPLOAD_FILENAME https://artifacts.thinnect.net/repository/ci/reportlogger/build-${BUILD_NUMBER}/${BUILD_ARCH}/
+			"""
+	}
+}

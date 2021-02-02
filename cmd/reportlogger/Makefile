@@ -18,3 +18,8 @@ raspberry2: build
 build:
 	go build -o reportlogger -ldflags '-X "main.ApplicationBuildDate=$(BUILD_DATE)" -X "main.ApplicationBuildDistro=$(BUILD_DISTRO)"'
 	file reportlogger
+
+clean:
+	rm -f reportlogger
+
+.PHONY: clean
