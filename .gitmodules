@@ -1,0 +1,9 @@
+[submodule "vendor/github.com/jessevdk/go-flags"]
+	path = vendor/github.com/jessevdk/go-flags
+	url = https://github.com/jessevdk/go-flags
+[submodule "vendor/github.com/proactivity-lab/go-loggers"]
+	path = vendor/github.com/proactivity-lab/go-loggers
+	url = https://github.com/proactivity-lab/go-loggers
+[submodule "vendor/github.com/proactivity-lab/go-moteconnection"]
+	path = vendor/github.com/proactivity-lab/go-moteconnection
+	url = https://github.com/proactivity-lab/go-moteconnection
