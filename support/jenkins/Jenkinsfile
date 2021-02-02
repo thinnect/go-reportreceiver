@@ -61,7 +61,7 @@ pipeline
 def buildStuff()
 {
 	sh 'mkdir -p src/github.com/thinnect/go-reportreceiver'
-	sh 'mv * src/github.com/thinnect/go-reportreceiver'
+	sh 'mv -f * src/github.com/thinnect/go-reportreceiver'
 
 	// stage('Echo GOPATH')
 	sh 'echo GOPATH:$GOPATH'
