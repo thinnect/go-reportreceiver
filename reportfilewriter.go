@@ -3,8 +3,10 @@
 
 package reportreceiver
 
-import "fmt"
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 type ReportFileWriter struct {
 	outfile string

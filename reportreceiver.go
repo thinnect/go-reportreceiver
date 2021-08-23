@@ -1,15 +1,17 @@
 // Author  Raido Pahtma
 // License MIT
 
-// ReportReceiver package.
+// Package reportreceiver ReportReceiver
 package reportreceiver
 
-import "fmt"
-import "time"
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"time"
 
-import "github.com/proactivity-lab/go-loggers"
-import "github.com/proactivity-lab/go-moteconnection"
+	"github.com/proactivity-lab/go-loggers"
+	"github.com/proactivity-lab/go-moteconnection"
+)
 
 const AMID_REPORTS = 9
 const AM_DEFAULT_GROUP = 0x22
@@ -56,6 +58,11 @@ type Report struct {
 	LastRcvd  time.Time
 	FragsRcvd int
 }
+
+type QueueElement struct {
+	Source moteconnection.AMAddr
+}
+
 
 func (self *Report) StorageStringHeader() string {
 	return "timestamp ff, timestamp lf, ADDR, reportnum, CHANNEL, reportid, clocktime, localtime, data"
@@ -160,11 +167,10 @@ func NewPartialReport(source moteconnection.AMAddr, rm *ReportMsg) *PartialRepor
 type ReportReceiver struct {
 	loggers.DIWEloggers
 
-	mconn   moteconnection.MoteConnection
-	dsp     *moteconnection.MessageDispatcher
-	receive chan moteconnection.Packet
-	reports map[moteconnection.AMAddr]*PartialReport
-
+	mconn        moteconnection.MoteConnection
+	dsp          *moteconnection.MessageDispatcher
+	receive      chan moteconnection.Packet
+	reports      map[moteconnection.AMAddr]*PartialReport
 	reportwriter ReportWriter
 }
 
@@ -203,7 +209,7 @@ func (self *ReportReceiver) SetOutput(rw ReportWriter) {
 }
 
 func (self *ReportReceiver) Run() {
-	self.Debug.Printf("run\n")
+	self.Debug.Printf("run main loop\n")
 	for {
 		select {
 		case packet := <-self.receive:
@@ -212,11 +218,11 @@ func (self *ReportReceiver) Run() {
 			if len(msg.Payload) > 0 {
 				if msg.Payload[0] == HEADER_REPORTMESSAGE {
 					rpm := new(ReportMsg)
+
 					if err := moteconnection.DeserializePacket(rpm, msg.Payload); err != nil {
 						self.Error.Printf("%s %s\n", msg, err)
 						break
 					}
-
 					if rpm.Report == 0 {
 						self.Info.Printf("RESET %s\n", msg.Source())
 						delete(self.reports, msg.Source())
@@ -253,20 +259,57 @@ func (self *ReportReceiver) Run() {
 
 					pr.AddFragment(rpm)
 					self.Debug.Printf("%s\n", pr)
-
-					if report, err := pr.GetReport(); err == nil {
-						self.Info.Printf("%s\n", report)
-						err := self.reportwriter.Append(report)
-						if err != nil {
+					if pr.IsComplete() {
+						if report, err := pr.GetReport(); err == nil {
+							self.Info.Printf("%s\n", report)
+							err := self.reportwriter.Append(report)
+							if err != nil {
+								self.Error.Printf("%s\n", err)
+							}
+							//sends ACK if all fragments have arrived
+							self.SendAck(msg.Source(), rpm.Report, nil)
+						} else {
 							self.Error.Printf("%s\n", err)
 						}
-						self.SendAck(msg.Source(), rpm.Report, nil)
 					} else {
-						self.SendAck(msg.Source(), rpm.Report, pr.Missing())
-						// TODO Delay ack, still missing something
+						self.Debug.Printf("Missing fragments!")
 					}
 				}
 			}
 		}
+	}
+}
+
+// RunResetResender func
+// Resends ACK packets to nodes which are awaiting for routing and have only sent RESET
+func (self *ReportReceiver) RunResetResender() {
+	self.Debug.Println("Run RESET ACK sender")
+	for {
+		time.Sleep(2 * time.Minute)
+		for key, element := range self.reports {
+			if 2 > element.Total {
+				self.Debug.Printf("Reportlogger shall send ACK from reset queue")
+				self.Debug.Printf("Sending to: %s", key)
+				self.SendAck(key, element.Report, nil)
+				break
+			}
+		}
+	}
+}
+
+// RunMissingFragmentResender func
+// Resends ACK packets to nodes which have not sent all fragments at current report
+func (self *ReportReceiver) RunMissingFragmentResender() {
+	self.Debug.Println("Run missing fragment sender")
+	for {
+		time.Sleep(1 * time.Minute)
+		for key, element := range self.reports {
+			if !element.IsComplete() {
+				self.Debug.Printf("missing fragment, sending to: %s", key)
+				self.SendAck(key, element.Report, nil)
+				time.Sleep(5 * time.Second)
+			}
+		}
+
 	}
 }
